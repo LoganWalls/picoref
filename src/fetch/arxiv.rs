@@ -2,7 +2,7 @@ use anyhow::Result;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-use super::cap_as_str;
+use crate::regex::cap_as_str;
 
 static RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)10.48550/arxiv\.(.+)").unwrap());
 static RESP_RE: Lazy<Regex> =

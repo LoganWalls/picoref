@@ -1,4 +1,6 @@
+mod citekey;
 mod fetch;
+mod regex;
 use anyhow::Result;
 use clap::{command, Parser};
 
