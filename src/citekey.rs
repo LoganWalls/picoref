@@ -14,11 +14,10 @@ static RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^((https?://)?www[.\-])?(?P<t>[A-Za-z0-9]{1,10})").unwrap());
 static WHITESPACE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s+").unwrap());
 static UNSUPPORTED_CHAR_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(<.*?>)|[^\w\-\s]").unwrap());
-static SHORT_TITLE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^_?(\w{1,15})(_|$)").unwrap());
 
 /// Generates a citekey based on the metadata contained in `reference`
-pub fn get_key(reference: &serde_json::Map<String, serde_json::Value>) -> Result<String> {
-    let name = reference
+pub fn get_key(entry: &serde_json::Map<String, serde_json::Value>) -> Result<String> {
+    let name = entry
         .get("author")
         .and_then(|authors| authors.get(0))
         .and_then(|author| {
@@ -44,27 +43,25 @@ pub fn get_key(reference: &serde_json::Map<String, serde_json::Value>) -> Result
                         .map(|s| s.to_string())
                 })
         })
-        .unwrap_or("noauthor".to_string());
-
-    let year = reference
-        .get("issued")
-        .and_then(|issued| {
-            Some(
-                issued
-                    .get("date-parts")?
-                    .get(0)?
-                    .get(0)?
-                    .as_u64()?
-                    .to_string(),
-            )
-        })
-        .unwrap_or("".to_string());
+        .as_ref()
+        .map(|s| UNSUPPORTED_CHAR_RE.replace_all(s, " "))
+        .map(|s| WHITESPACE_RE.replace_all(&s, " ").trim().replace(' ', "-"));
+    let year = entry.get("issued").and_then(|issued| {
+        Some(
+            issued
+                .get("date-parts")?
+                .get(0)?
+                .get(0)?
+                .as_u64()?
+                .to_string(),
+        )
+    });
 
     // Filters out stopwords, then takes all of the remaining complete words
     // separated by underscores, up to a total length of 15 characters.
-    let short_title = reference
+    let short_title = entry
         .get("title_short")
-        .or_else(|| reference.get("title"))
+        .or_else(|| entry.get("title"))
         .and_then(|title| {
             title
                 .as_str()
@@ -77,13 +74,15 @@ pub fn get_key(reference: &serde_json::Map<String, serde_json::Value>) -> Result
                         .split_whitespace()
                         .filter(|w| !STOPWORDS.contains(w))
                         .collect::<Vec<_>>()
-                        .join("_")
+                        .join("-")
                 })
                 .as_ref()
-                .and_then(|s| cap_as_str(&SHORT_TITLE_RE, s, 1).or_else(|| s.split('_').next()))
-                .map(|s| s.to_string())
-        })
-        .unwrap_or("".to_string());
+                .map(|s| s.split('-').take(2).collect::<Vec<_>>().join("-"))
+        });
 
-    Ok(format!("{name}{year}_{short_title}").to_string())
+    Ok([name, year, short_title]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<String>>()
+        .join("_"))
 }

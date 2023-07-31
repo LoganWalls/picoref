@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Default, Debug)]
 pub struct Config {
     /// Path to library
-    pub root: Option<PathBuf>,
+    pub root: PathBuf,
 }
 
 pub fn load(path: Option<PathBuf>) -> Result<Config> {

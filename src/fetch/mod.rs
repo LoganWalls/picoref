@@ -4,6 +4,8 @@ mod osf;
 
 use anyhow::Result;
 
+use crate::Entry;
+
 /// Checks if there is a published version of this paper (e.g. if the provided DOI is a pre-print)
 /// and returns the DOI of the published version, if available.
 pub fn published_doi(doi: &str) -> Result<Option<String>> {
@@ -20,7 +22,7 @@ pub fn published_doi(doi: &str) -> Result<Option<String>> {
     Ok(None)
 }
 
-pub fn fetch_metadata(doi: &str) -> Result<serde_json::Map<String, serde_json::Value>> {
+pub fn fetch_metadata(doi: &str) -> Result<Entry> {
     let url = if let Some(published) = published_doi(doi)? {
         format!("https://dx.doi.org/{published}")
     } else {
