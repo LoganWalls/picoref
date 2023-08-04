@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 pub struct Config {
     /// Path to library
     pub root: PathBuf,
+    /// Email (for API self-identification)
+    pub email: String,
 }
 
 pub fn load(path: Option<PathBuf>) -> Result<Config> {

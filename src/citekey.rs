@@ -3,6 +3,7 @@ use deunicode::deunicode_with_tofu;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
+use crate::entry::EntryData;
 use crate::regex::cap_as_str;
 
 const STOPWORDS: [&str; 22] = [
@@ -16,8 +17,8 @@ static WHITESPACE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s+").unwrap());
 static UNSUPPORTED_CHAR_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(<.*?>)|[^\w\-\s]").unwrap());
 
 /// Generates a citekey based on the metadata contained in `reference`
-pub fn get_key(entry: &serde_json::Map<String, serde_json::Value>) -> Result<String> {
-    let name = entry
+pub fn get_key(data: &EntryData) -> Result<String> {
+    let name = data
         .get("author")
         .and_then(|authors| authors.get(0))
         .and_then(|author| {
@@ -46,7 +47,7 @@ pub fn get_key(entry: &serde_json::Map<String, serde_json::Value>) -> Result<Str
         .as_ref()
         .map(|s| UNSUPPORTED_CHAR_RE.replace_all(s, " "))
         .map(|s| WHITESPACE_RE.replace_all(&s, " ").trim().replace(' ', "-"));
-    let year = entry.get("issued").and_then(|issued| {
+    let year = data.get("issued").and_then(|issued| {
         Some(
             issued
                 .get("date-parts")?
@@ -59,9 +60,9 @@ pub fn get_key(entry: &serde_json::Map<String, serde_json::Value>) -> Result<Str
 
     // Filters out stopwords, then takes all of the remaining complete words
     // separated by underscores, up to a total length of 15 characters.
-    let short_title = entry
+    let short_title = data
         .get("title_short")
-        .or_else(|| entry.get("title"))
+        .or_else(|| data.get("title"))
         .and_then(|title| {
             title
                 .as_str()
