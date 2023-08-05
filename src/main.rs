@@ -41,6 +41,9 @@ pub enum Command {
     Pdf {
         /// The citekey of the reference to fetch
         key: String,
+        /// Copy an exisitng file into your library instead of fetching a PDF from the internet
+        #[arg(short, long, value_name = "FILE", value_hint = ValueHint::FilePath)]
+        file: Option<PathBuf>,
     },
 
     /// Import all entries from a file
@@ -73,16 +76,20 @@ fn main() -> Result<()> {
                 ops::write_entry(&root, &key, data)?;
             }
         }
-        Command::Pdf { key } => {
+        Command::Pdf { key, file } => {
             let source = read_entry(&root, &key)?.source;
             let path = ops::pdf_path(&root, &key);
             if path.exists() {
                 panic!("A file already exists at: {}", path.to_string_lossy());
             }
-            let pdf_url = fetch::fetch_pdf_url(&source, &conf.email)?;
-            let mut pdf_data = ureq::get(&pdf_url).call()?.into_reader();
-            let mut file = File::create(path)?;
-            std::io::copy(&mut pdf_data, &mut file)?;
+            if let Some(source_path) = file {
+                std::fs::copy(source_path, path)?;
+            } else {
+                let mut new_file = File::create(path)?;
+                let pdf_url = fetch::fetch_pdf_url(&source, &conf.email)?;
+                let mut pdf_data = ureq::get(&pdf_url).call()?.into_reader();
+                std::io::copy(&mut pdf_data, &mut new_file)?;
+            };
         }
     }
     Ok(())
