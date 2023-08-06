@@ -18,8 +18,20 @@ pub fn pdf_path(root: &Path, key: &str) -> PathBuf {
     entry_root_path(root, key).join(format!("{key}.pdf"))
 }
 
-pub fn read_entry(root: &Path, key: &str) -> Result<Entry> {
-    let path = data_path(root, key);
+pub fn entry_paths(root: &Path) -> Result<Vec<PathBuf>> {
+    Ok(std::fs::read_dir(root)?
+        .filter_map(|p| {
+            let p = p.unwrap().path();
+            if p.is_dir() {
+                Some(p)
+            } else {
+                None
+            }
+        })
+        .collect())
+}
+
+pub fn read_entry(path: &Path) -> Result<Entry> {
     let file = File::open(path)?;
     let reader = BufReader::new(file);
     Ok(serde_yaml::from_reader(reader)?)

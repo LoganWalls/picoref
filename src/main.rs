@@ -5,11 +5,11 @@ mod fetch;
 mod ops;
 mod regex;
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
 
-use anyhow::Result;
-use clap::{command, Parser, Subcommand, ValueHint};
+use anyhow::{Context, Result};
+use clap::{command, Parser, Subcommand, ValueEnum, ValueHint};
 
 use self::entry::EntryData;
 use self::ops::read_entry;
@@ -29,8 +29,14 @@ struct CliArgs {
     pub root: Option<PathBuf>,
 }
 
+#[derive(ValueEnum, Clone, Debug)]
+enum ExportFormat {
+    Json,
+    Biblatex,
+}
+
 #[derive(Subcommand, Debug)]
-pub enum Command {
+enum Command {
     /// Adds a reference to your library
     Add {
         /// The DOI of the reference to fetch
@@ -48,9 +54,20 @@ pub enum Command {
 
     /// Import all entries from a file
     Import {
-        /// The file to import
+        /// The file to import from
         #[arg(value_name = "FILE", value_hint = ValueHint::FilePath)]
         path: PathBuf,
+    },
+
+    /// Export from your library
+    Export {
+        /// The path to export to
+        #[arg(value_name = "FILE", value_hint = ValueHint::FilePath)]
+        path: PathBuf,
+
+        /// The citekey of the reference to export (if not provided, all references are exported)
+        #[arg(short, long)]
+        key: Option<String>,
     },
 }
 
@@ -76,8 +93,31 @@ fn main() -> Result<()> {
                 ops::write_entry(&root, &key, data)?;
             }
         }
+        Command::Export { path, key } => {
+            let paths = if let Some(k) = key {
+                vec![ops::entry_root_path(&root, &k)]
+            } else {
+                ops::entry_paths(&root)?
+            };
+            let content = paths
+                .into_iter()
+                .map(|p| {
+                    read_entry(&ops::data_path(
+                        &root,
+                        p.file_name()
+                            .context("Not a valid file name")?
+                            .to_str()
+                            .context("Path contains unicode")?,
+                    ))
+                    .map(|e| e.data)
+                })
+                .collect::<Result<Vec<EntryData>>>()?;
+            let file = File::create(path)?;
+            let writer = BufWriter::new(file);
+            serde_json::to_writer(writer, &content)?;
+        }
         Command::Pdf { key, file } => {
-            let source = read_entry(&root, &key)?.source;
+            let source = read_entry(&ops::data_path(&root, &key))?.source;
             let path = ops::pdf_path(&root, &key);
             if path.exists() {
                 panic!("A file already exists at: {}", path.to_string_lossy());
