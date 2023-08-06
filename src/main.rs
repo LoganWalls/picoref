@@ -10,6 +10,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clap::{command, Parser, Subcommand, ValueHint};
+use itertools::Itertools;
 
 use self::entry::EntryData;
 use self::ops::read_entry;
@@ -30,9 +31,37 @@ struct CliArgs {
 }
 
 #[derive(Subcommand, Debug)]
+enum TagCommand {
+    /// List all of the tags the currently exist in your library
+    List,
+
+    /// Add a tag to an entry
+    Add {
+        /// The tag to be modified
+        tag: String,
+
+        /// The citekey of the reference to change
+        key: String,
+    },
+
+    /// Remove a tag from an entry
+    Remove {
+        /// The tag to be modified
+        tag: String,
+
+        /// The citekey of the reference to change
+        key: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
 enum Command {
     /// List the references in your library
-    List,
+    List {
+        /// List entries with a specific tag
+        #[arg(short, long)]
+        tag: Option<String>,
+    },
 
     /// Add a reference to your library
     Add {
@@ -66,6 +95,12 @@ enum Command {
         #[arg(short, long)]
         key: Option<String>,
     },
+
+    /// Modify (add / remove) a tag from an entry
+    Tag {
+        #[command(subcommand)]
+        action: TagCommand,
+    },
 }
 
 fn main() -> Result<()> {
@@ -74,8 +109,22 @@ fn main() -> Result<()> {
     let root = cli_args.root.unwrap_or(conf.root);
 
     match cli_args.command {
-        Command::List => {
-            for path in ops::entry_paths(&root)? {
+        Command::List { tag } => {
+            let mut paths = ops::entry_paths(&root)?;
+            if let Some(t) = tag {
+                paths.retain(|p| {
+                    ops::read_entry(&ops::data_path(
+                        &root,
+                        &p.file_name().unwrap().to_string_lossy(),
+                    ))
+                    .unwrap()
+                    .data
+                    .custom
+                    .tags
+                    .contains(&t)
+                })
+            }
+            for path in paths {
                 println!("{}", path.file_name().unwrap().to_str().unwrap())
             }
         }
@@ -83,8 +132,36 @@ fn main() -> Result<()> {
             let mut entry = fetch::fetch_metadata(&doi)?;
             let key = citekey::get_key(&entry.data)?;
             ops::update_metadata(&mut entry.data, &key)?;
-            ops::write_entry(&root, &key, &entry.data)?;
+            ops::write_entry(&root, &key, &entry.data, false)?;
+            println!("{key}");
         }
+        Command::Tag { action } => match &action {
+            TagCommand::List => ops::entry_paths(&root)?
+                .into_iter()
+                .flat_map(|p| {
+                    ops::read_entry(&ops::data_path(
+                        &root,
+                        &p.file_name().unwrap().to_string_lossy(),
+                    ))
+                    .unwrap()
+                    .data
+                    .custom
+                    .tags
+                })
+                .unique()
+                .sorted()
+                .for_each(|t| println!("{t}")),
+            TagCommand::Add { tag, key } | TagCommand::Remove { tag, key } => {
+                let path = ops::data_path(&root, key);
+                let mut entry = ops::read_entry(&path)?;
+                match action {
+                    TagCommand::Add { .. } => entry.data.custom.tags.push(tag.to_string()),
+                    TagCommand::Remove { .. } => entry.data.custom.tags.retain(|t| *t != *tag),
+                    _ => unreachable!(),
+                }
+                ops::write_entry(&root, key, &entry.data, true)?;
+            }
+        },
         Command::Import { path } => {
             let file = File::open(path)?;
             let reader = BufReader::new(file);
@@ -92,7 +169,7 @@ fn main() -> Result<()> {
             for data in entries.iter_mut() {
                 let key = citekey::get_key(data)?;
                 ops::update_metadata(data, &key)?;
-                ops::write_entry(&root, &key, data)?;
+                ops::write_entry(&root, &key, data, false)?;
             }
         }
         Command::Export { path, key } => {

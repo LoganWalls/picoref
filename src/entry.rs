@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use serde_json::Map;
 
 use crate::fetch::{arxiv, biorxiv, osf};
 use crate::regex::cap_as_str;
@@ -33,7 +34,20 @@ impl From<&str> for Source {
     }
 }
 
-pub type EntryData = serde_json::Map<String, serde_json::Value>;
+#[derive(Serialize, Deserialize, Default, Debug)]
+pub struct CustomFields {
+    pub tags: Vec<String>,
+    #[serde(flatten)]
+    pub other: Map<String, serde_json::Value>,
+}
+
+#[derive(Serialize, Deserialize, Default, Debug)]
+pub struct EntryData {
+    #[serde(default)]
+    pub custom: CustomFields,
+    #[serde(flatten)]
+    pub standard_fields: Map<String, serde_json::Value>,
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(try_from = "EntryData")]
@@ -46,6 +60,7 @@ impl TryFrom<EntryData> for Entry {
     type Error = anyhow::Error;
     fn try_from(data: EntryData) -> Result<Self> {
         let source = data
+            .standard_fields
             .get("DOI")
             .context("No DOI found")?
             .as_str()

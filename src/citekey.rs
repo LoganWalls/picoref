@@ -19,6 +19,7 @@ static UNSUPPORTED_CHAR_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(<.*?>)|[^\w
 /// Generates a citekey based on the metadata contained in `reference`
 pub fn get_key(data: &EntryData) -> Result<String> {
     let name = data
+        .standard_fields
         .get("author")
         .and_then(|authors| authors.get(0))
         .and_then(|author| {
@@ -47,7 +48,7 @@ pub fn get_key(data: &EntryData) -> Result<String> {
         .as_ref()
         .map(|s| UNSUPPORTED_CHAR_RE.replace_all(s, " "))
         .map(|s| WHITESPACE_RE.replace_all(&s, " ").trim().replace(' ', "-"));
-    let year = data.get("issued").and_then(|issued| {
+    let year = data.standard_fields.get("issued").and_then(|issued| {
         Some(
             issued
                 .get("date-parts")?
@@ -61,8 +62,9 @@ pub fn get_key(data: &EntryData) -> Result<String> {
     // Filters out stopwords, then takes all of the remaining complete words
     // separated by underscores, up to a total length of 15 characters.
     let short_title = data
+        .standard_fields
         .get("title_short")
-        .or_else(|| data.get("title"))
+        .or_else(|| data.standard_fields.get("title"))
         .and_then(|title| {
             title
                 .as_str()

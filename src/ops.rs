@@ -37,10 +37,10 @@ pub fn read_entry(path: &Path) -> Result<Entry> {
     Ok(serde_yaml::from_reader(reader)?)
 }
 
-pub fn write_entry(root: &Path, key: &str, data: &EntryData) -> Result<()> {
+pub fn write_entry(root: &Path, key: &str, data: &EntryData, overwrite: bool) -> Result<()> {
     let dir = entry_root_path(root, key);
     let path = data_path(root, key);
-    if path.exists() {
+    if path.exists() && !overwrite {
         println!(
             "Entry already exists at: {} (skipping)",
             path.to_string_lossy()
@@ -55,13 +55,18 @@ pub fn write_entry(root: &Path, key: &str, data: &EntryData) -> Result<()> {
 }
 
 pub fn update_metadata(data: &mut EntryData, key: &str) -> Result<()> {
-    let old_id = data.insert("id".to_string(), key.clone().into());
+    let old_id = data
+        .standard_fields
+        .insert("id".to_string(), key.clone().into());
     if let Some(i) = old_id {
-        data.insert("legacy-id".to_string(), i);
+        data.standard_fields.insert("legacy-id".to_string(), i);
     }
-    let old_key = data.insert("citation-key".to_string(), key.clone().into());
+    let old_key = data
+        .standard_fields
+        .insert("citation-key".to_string(), key.clone().into());
     if let Some(k) = old_key {
-        data.insert("legacy-citation-key".to_string(), k);
+        data.standard_fields
+            .insert("legacy-citation-key".to_string(), k);
     }
     Ok(())
 }
