@@ -9,7 +9,7 @@ use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use clap::{command, Parser, Subcommand, ValueEnum, ValueHint};
+use clap::{command, Parser, Subcommand, ValueHint};
 
 use self::entry::EntryData;
 use self::ops::read_entry;
@@ -29,21 +29,18 @@ struct CliArgs {
     pub root: Option<PathBuf>,
 }
 
-#[derive(ValueEnum, Clone, Debug)]
-enum ExportFormat {
-    Json,
-    Biblatex,
-}
-
 #[derive(Subcommand, Debug)]
 enum Command {
-    /// Adds a reference to your library
+    /// List the references in your library
+    List,
+
+    /// Add a reference to your library
     Add {
         /// The DOI of the reference to fetch
         doi: String,
     },
 
-    /// Downloads a pdf
+    /// Add a pdf to an entry in your library
     Pdf {
         /// The citekey of the reference to fetch
         key: String,
@@ -77,6 +74,11 @@ fn main() -> Result<()> {
     let root = cli_args.root.unwrap_or(conf.root);
 
     match cli_args.command {
+        Command::List => {
+            for path in ops::entry_paths(&root)? {
+                println!("{}", path.file_name().unwrap().to_str().unwrap())
+            }
+        }
         Command::Add { doi } => {
             let mut entry = fetch::fetch_metadata(&doi)?;
             let key = citekey::get_key(&entry.data)?;
