@@ -22,7 +22,8 @@ pub fn entry_paths(root: &Path) -> Result<Vec<PathBuf>> {
     Ok(std::fs::read_dir(root)?
         .filter_map(|p| {
             let p = p.unwrap().path();
-            if p.is_dir() {
+            let key = p.file_name().unwrap().to_str().unwrap();
+            if p.is_dir() && data_path(root, key).exists() {
                 Some(p)
             } else {
                 None
