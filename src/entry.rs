@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Map;
 
@@ -52,7 +52,7 @@ pub struct EntryData {
 #[derive(Debug, Deserialize)]
 #[serde(try_from = "EntryData")]
 pub struct Entry {
-    pub source: Source,
+    pub source: Option<Source>,
     pub data: EntryData,
 }
 
@@ -62,10 +62,8 @@ impl TryFrom<EntryData> for Entry {
         let source = data
             .standard_fields
             .get("DOI")
-            .context("No DOI found")?
-            .as_str()
-            .context("Could not convert DOI to string")?
-            .into();
+            .and_then(|doi| doi.as_str())
+            .map(|s| s.into());
         Ok(Self { source, data })
     }
 }

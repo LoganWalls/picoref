@@ -29,7 +29,10 @@ pub fn fetch_metadata(doi: &str) -> Result<Entry> {
         .set("Accept", "application/citeproc+json; charset=utf-8")
         .call()?
         .into_json()?;
-    Ok(Entry { source, data })
+    Ok(Entry {
+        source: Some(source),
+        data,
+    })
 }
 
 pub fn fetch_pdf_url(source: &Source, email: &str) -> Result<String> {
