@@ -204,12 +204,12 @@ fn main() -> Result<()> {
             if let Some(source_path) = file {
                 std::fs::copy(source_path, path)?;
             } else {
-                let mut new_file = File::create(path)?;
                 let pdf_url = fetch::fetch_pdf_url(
                     &source.expect("Cannot fetch PDF for reference with no DOI"),
                     &conf.email,
                 )?;
                 let mut pdf_data = ureq::get(&pdf_url).call()?.into_reader();
+                let mut new_file = File::create(path)?;
                 std::io::copy(&mut pdf_data, &mut new_file)?;
             };
         }
