@@ -7,9 +7,11 @@ mod regex;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use clap::{command, Parser, Subcommand, ValueHint};
+use indicatif::ProgressBar;
 use itertools::Itertools;
 
 use self::entry::EntryData;
@@ -204,13 +206,19 @@ fn main() -> Result<()> {
             if let Some(source_path) = file {
                 std::fs::copy(source_path, path)?;
             } else {
+                let mut pb = ProgressBar::new_spinner().with_message("Searching for PDF");
+                pb.enable_steady_tick(Duration::from_millis(100));
                 let pdf_url = fetch::fetch_pdf_url(
                     &source.expect("Cannot fetch PDF for reference with no DOI"),
                     &conf.email,
                 )?;
+                pb.finish_with_message("PDF found");
                 let mut pdf_data = ureq::get(&pdf_url).call()?.into_reader();
+                pb = ProgressBar::new_spinner().with_message("Downloading");
+                pb.enable_steady_tick(Duration::from_millis(100));
                 let mut new_file = File::create(path)?;
                 std::io::copy(&mut pdf_data, &mut new_file)?;
+                pb.finish_with_message("Download complete");
             };
         }
     }

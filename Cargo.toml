@@ -9,6 +9,7 @@ edition = "2021"
 anyhow = "1.0.72"
 clap = { version = "4.3.19", features = ["derive"] }
 deunicode = "1.3.3"
+indicatif = "0.17.7"
 itertools = "0.11.0"
 once_cell = "1.18.0"
 regex = { version = "1.9.1", features = ["std"] }
