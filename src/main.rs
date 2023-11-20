@@ -5,7 +5,7 @@ mod fetch;
 mod ops;
 mod regex;
 use std::fs::File;
-use std::io::{BufReader, BufWriter};
+use std::io::{BufReader, BufWriter, Write};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -78,6 +78,12 @@ enum Command {
         /// Copy an exisitng file into your library instead of fetching a PDF from the internet
         #[arg(short, long, value_name = "FILE", value_hint = ValueHint::FilePath)]
         file: Option<PathBuf>,
+    },
+
+    /// Generate a markdown file with the entry's metadata
+    Markdown {
+        /// The citekey of the reference to render
+        key: String,
     },
 
     /// Import all entries from a file
@@ -220,6 +226,84 @@ fn main() -> Result<()> {
                 std::io::copy(&mut pdf_data, &mut new_file)?;
                 pb.finish_with_message("Download complete");
             };
+        }
+        Command::Markdown { key } => {
+            let data = read_entry(&ops::data_path(&root, &key))?.data;
+            let stdout = std::io::stdout().lock();
+            let mut writer = BufWriter::new(stdout);
+
+            if let Some(title) = data.standard_fields.get("title").and_then(|t| t.as_str()) {
+                writer.write_all("# ".as_bytes())?;
+                writer.write_all(title.as_bytes())?;
+                writer.write_all("\n".as_bytes())?;
+            }
+
+            let by_line = data
+                .standard_fields
+                .get("author")
+                .and_then(|a| {
+                    a.as_array()?
+                        .iter()
+                        .map(|a| {
+                            let given = a.get("given")?.as_str()?;
+                            let family = a.get("family")?.as_str()?;
+                            Some(format!("{given} {family}"))
+                        })
+                        .collect::<Option<Vec<String>>>()
+                })
+                .map(|mut v| {
+                    if v.len() > 1 {
+                        let last_i = v.len() - 1;
+                        let new_last_entry = format!("& {}", v[last_i]);
+                        let _ = std::mem::replace(&mut v[last_i], new_last_entry);
+                    }
+                    v.join(if v.len() > 2 { ", " } else { " " })
+                })
+                .or_else(|| Some(data.standard_fields.get("source")?.as_str()?.to_string()));
+            if let Some(by) = &by_line {
+                writer.write_all(by.as_bytes())?;
+                writer.write_all("\n".as_bytes())?;
+            }
+
+            if let Some(container) = data
+                .standard_fields
+                .get("container-title")
+                .and_then(|c| c.as_str())
+            {
+                writer.write_all("*".as_bytes())?;
+                writer.write_all(container.as_bytes())?;
+                writer.write_all("*".as_bytes())?;
+            }
+
+            if let Some(year) = data
+                .standard_fields
+                .get("issued")
+                .and_then(|i| i.get("date-parts")?.get(0)?.get(0)?.as_u64())
+            {
+                writer.write_all(" (".as_bytes())?;
+                writer.write_all(year.to_string().as_bytes())?;
+                writer.write_all(")".as_bytes())?;
+            }
+
+            writer.write_all("\n\n".as_bytes())?;
+
+            if let Some(entry_abstract) = data
+                .standard_fields
+                .get("abstract")
+                .and_then(|a| a.as_str())
+            {
+                writer.write_all(entry_abstract.as_bytes())?;
+                writer.write_all("\n\n".as_bytes())?;
+            }
+
+            let tags = data.custom.tags;
+            if !tags.is_empty() {
+                writer.write_all("Tags: ".as_bytes())?;
+                writer.write_all(tags.join(", ").as_bytes())?;
+                writer.write_all("\n".as_bytes())?;
+            }
+
+            writer.flush()?;
         }
     }
     Ok(())
