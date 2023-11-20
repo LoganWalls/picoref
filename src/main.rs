@@ -58,6 +58,9 @@ enum TagCommand {
 
 #[derive(Subcommand, Debug)]
 enum Command {
+    /// Print the path to your library's root
+    Root,
+
     /// List the references in your library
     List {
         /// List entries with a specific tag
@@ -117,6 +120,7 @@ fn main() -> Result<()> {
     let root = cli_args.root.unwrap_or(conf.root);
 
     match cli_args.command {
+        Command::Root => println!("{}", root.to_str().expect("path to be valid unicode")),
         Command::List { tag } => {
             let mut paths = ops::entry_paths(&root)?;
             if let Some(t) = tag {
