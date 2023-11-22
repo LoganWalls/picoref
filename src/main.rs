@@ -43,9 +43,13 @@ enum TagsCommand {
         #[arg(short, long, num_args(1..))]
         tags: Vec<String>,
 
-        /// The citekey(s) of the reference(s) to add the tag to
+        /// The citekey(s) of the entri(es) to add the tag to.
         #[arg(short, long, num_args(1..))]
         keys: Vec<String>,
+
+        /// Add the tag(s) to all entries in your library
+        #[arg(long, conflicts_with = "keys", default_value_t = false)]
+        all_entries: bool,
     },
 
     /// Remove a tag from an entry
@@ -54,9 +58,17 @@ enum TagsCommand {
         #[arg(short, long, num_args(1..))]
         tags: Vec<String>,
 
-        /// The citekey(s) of the reference(s) to remove the tag from
+        /// Remove all tags from the entries with
+        #[arg(long, conflicts_with = "tags", default_value_t = false)]
+        all_tags: bool,
+
+        /// The citekey(s) of the entri(es) to remove the tag from
         #[arg(short, long, num_args(1..))]
         keys: Vec<String>,
+
+        /// Remove the tag(s) from all entries in your library
+        #[arg(long, conflicts_with = "keys", default_value_t = false)]
+        all_entries: bool,
     },
 }
 
@@ -65,7 +77,7 @@ enum Command {
     /// Print the path to your library's root
     Root,
 
-    /// List the references in your library
+    /// List the entries in your library
     List {
         /// List entries with a specific tag
         #[arg(long, num_args(1..), conflicts_with = "all_tags")]
@@ -79,6 +91,10 @@ enum Command {
     Add {
         /// The DOI of the reference to fetch
         doi: String,
+
+        /// Tags to add to the new entry
+        #[arg(short, long, num_args(1..))]
+        tags: Option<Vec<String>>,
     },
 
     /// Add a pdf to an entry in your library
@@ -109,7 +125,7 @@ enum Command {
         #[arg(value_name = "FILE", value_hint = ValueHint::FilePath)]
         path: PathBuf,
 
-        /// The citekey of the reference to export (if not provided, all references are exported)
+        /// The citekey of the reference to export (if not provided, all entries are exported)
         #[arg(short, long)]
         key: Option<String>,
     },
@@ -129,7 +145,7 @@ fn main() -> Result<()> {
     match cli_args.command {
         Command::Root => println!("{}", root.to_str().expect("path to be valid unicode")),
         Command::List { any_tag, all_tags } => {
-            let mut paths = ops::entry_paths(&root)?;
+            let mut paths = ops::all_entry_paths(&root)?;
             if any_tag.is_some() || all_tags.is_some() {
                 paths.retain(|p| {
                     let entry_tags = ops::read_entry(&ops::data_path(
@@ -148,18 +164,21 @@ fn main() -> Result<()> {
                 })
             }
             for path in paths {
-                println!("{}", path.file_name().unwrap().to_str().unwrap())
+                println!("{}", ops::key_from_path(&path))
             }
         }
-        Command::Add { doi } => {
+        Command::Add { doi, tags } => {
             let mut entry = fetch::fetch_metadata(&doi)?;
             let key = citekey::get_key(&entry.data)?;
             ops::update_metadata(&mut entry.data, &key)?;
+            if let Some(t) = tags {
+                entry.data.custom.tags.extend(t);
+            }
             ops::write_entry(&root, &key, &entry.data, false)?;
             println!("{key}");
         }
         Command::Tags { action } => match &action {
-            TagsCommand::List => ops::entry_paths(&root)?
+            TagsCommand::List => ops::all_entry_paths(&root)?
                 .into_iter()
                 .flat_map(|p| {
                     ops::read_entry(&ops::data_path(
@@ -174,18 +193,41 @@ fn main() -> Result<()> {
                 .unique()
                 .sorted()
                 .for_each(|t| println!("{t}")),
-            TagsCommand::Add { tags, keys } | TagsCommand::Remove { tags, keys } => {
-                for k in keys {
-                    let path = ops::data_path(&root, k);
-                    let mut entry = ops::read_entry(&path)?;
-                    match action {
-                        TagsCommand::Add { .. } => entry.data.custom.tags.extend(tags.clone()),
-                        TagsCommand::Remove { .. } => {
-                            entry.data.custom.tags.retain(|t| !tags.contains(t))
-                        }
-                        _ => unreachable!(),
+            TagsCommand::Add {
+                tags,
+                keys,
+                all_entries,
+            } => {
+                let keys = if *all_entries {
+                    ops::all_keys(&root)?
+                } else {
+                    keys.to_vec()
+                };
+                for key in keys.iter() {
+                    let mut entry = ops::read_entry(&ops::data_path(&root, key))?;
+                    entry.data.custom.tags.extend(tags.clone());
+                    ops::write_entry(&root, key, &entry.data, true)?;
+                }
+            }
+            TagsCommand::Remove {
+                tags,
+                all_tags,
+                keys,
+                all_entries,
+            } => {
+                let keys = if *all_entries {
+                    ops::all_keys(&root)?
+                } else {
+                    keys.to_vec()
+                };
+                for key in keys.iter() {
+                    let mut entry = ops::read_entry(&ops::data_path(&root, key))?;
+                    if *all_tags {
+                        entry.data.custom.tags.clear();
+                    } else {
+                        entry.data.custom.tags.retain(|t| !tags.contains(t));
                     }
-                    ops::write_entry(&root, k, &entry.data, true)?;
+                    ops::write_entry(&root, key, &entry.data, true)?;
                 }
             }
         },
@@ -203,7 +245,7 @@ fn main() -> Result<()> {
             let paths = if let Some(k) = key {
                 vec![ops::entry_root_path(&root, &k)]
             } else {
-                ops::entry_paths(&root)?
+                ops::all_entry_paths(&root)?
             };
             let content = paths
                 .into_iter()

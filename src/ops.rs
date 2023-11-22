@@ -18,7 +18,11 @@ pub fn pdf_path(root: &Path, key: &str) -> PathBuf {
     entry_root_path(root, key).join(format!("{key}.pdf"))
 }
 
-pub fn entry_paths(root: &Path) -> Result<Vec<PathBuf>> {
+pub fn key_from_path(path: &Path) -> &str {
+    path.file_name().unwrap().to_str().unwrap()
+}
+
+pub fn all_entry_paths(root: &Path) -> Result<Vec<PathBuf>> {
     Ok(std::fs::read_dir(root)?
         .filter_map(|p| {
             let p = p.unwrap().path();
@@ -29,6 +33,13 @@ pub fn entry_paths(root: &Path) -> Result<Vec<PathBuf>> {
                 None
             }
         })
+        .collect())
+}
+
+pub fn all_keys(root: &Path) -> Result<Vec<String>> {
+    Ok(all_entry_paths(root)?
+        .iter()
+        .map(|p| key_from_path(p).to_string())
         .collect())
 }
 
