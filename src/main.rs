@@ -33,26 +33,30 @@ struct CliArgs {
 }
 
 #[derive(Subcommand, Debug)]
-enum TagCommand {
+enum TagsCommand {
     /// List all of the tags the currently exist in your library
     List,
 
     /// Add a tag to an entry
     Add {
-        /// The tag to be modified
-        tag: String,
+        /// The tag(s) to be added
+        #[arg(short, long, num_args(1..))]
+        tags: Vec<String>,
 
-        /// The citekey of the reference to change
-        key: String,
+        /// The citekey(s) of the reference(s) to add the tag to
+        #[arg(short, long, num_args(1..))]
+        keys: Vec<String>,
     },
 
     /// Remove a tag from an entry
     Remove {
-        /// The tag to be modified
-        tag: String,
+        /// The tag(s) to be removed
+        #[arg(short, long, num_args(1..))]
+        tags: Vec<String>,
 
-        /// The citekey of the reference to change
-        key: String,
+        /// The citekey(s) of the reference(s) to remove the tag from
+        #[arg(short, long, num_args(1..))]
+        keys: Vec<String>,
     },
 }
 
@@ -64,8 +68,11 @@ enum Command {
     /// List the references in your library
     List {
         /// List entries with a specific tag
-        #[arg(short, long)]
-        tag: Option<String>,
+        #[arg(long, num_args(1..), conflicts_with = "all_tags")]
+        any_tag: Option<Vec<String>>,
+
+        #[arg(long, num_args(1..), conflicts_with = "any_tag")]
+        all_tags: Option<Vec<String>>,
     },
 
     /// Add a reference to your library
@@ -107,10 +114,10 @@ enum Command {
         key: Option<String>,
     },
 
-    /// Modify (add / remove) a tag from an entry
-    Tag {
+    /// Modify (add / remove) or list tags
+    Tags {
         #[command(subcommand)]
-        action: TagCommand,
+        action: TagsCommand,
     },
 }
 
@@ -121,19 +128,23 @@ fn main() -> Result<()> {
 
     match cli_args.command {
         Command::Root => println!("{}", root.to_str().expect("path to be valid unicode")),
-        Command::List { tag } => {
+        Command::List { any_tag, all_tags } => {
             let mut paths = ops::entry_paths(&root)?;
-            if let Some(t) = tag {
+            if any_tag.is_some() || all_tags.is_some() {
                 paths.retain(|p| {
-                    ops::read_entry(&ops::data_path(
+                    let entry_tags = ops::read_entry(&ops::data_path(
                         &root,
                         &p.file_name().unwrap().to_string_lossy(),
                     ))
                     .unwrap()
                     .data
                     .custom
-                    .tags
-                    .contains(&t)
+                    .tags;
+                    match (&any_tag, &all_tags) {
+                        (Some(tags), None) => tags.iter().any(|t| entry_tags.contains(t)),
+                        (None, Some(tags)) => tags.iter().all(|t| entry_tags.contains(t)),
+                        _ => unreachable!(),
+                    }
                 })
             }
             for path in paths {
@@ -147,8 +158,8 @@ fn main() -> Result<()> {
             ops::write_entry(&root, &key, &entry.data, false)?;
             println!("{key}");
         }
-        Command::Tag { action } => match &action {
-            TagCommand::List => ops::entry_paths(&root)?
+        Command::Tags { action } => match &action {
+            TagsCommand::List => ops::entry_paths(&root)?
                 .into_iter()
                 .flat_map(|p| {
                     ops::read_entry(&ops::data_path(
@@ -163,15 +174,19 @@ fn main() -> Result<()> {
                 .unique()
                 .sorted()
                 .for_each(|t| println!("{t}")),
-            TagCommand::Add { tag, key } | TagCommand::Remove { tag, key } => {
-                let path = ops::data_path(&root, key);
-                let mut entry = ops::read_entry(&path)?;
-                match action {
-                    TagCommand::Add { .. } => entry.data.custom.tags.push(tag.to_string()),
-                    TagCommand::Remove { .. } => entry.data.custom.tags.retain(|t| *t != *tag),
-                    _ => unreachable!(),
+            TagsCommand::Add { tags, keys } | TagsCommand::Remove { tags, keys } => {
+                for k in keys {
+                    let path = ops::data_path(&root, k);
+                    let mut entry = ops::read_entry(&path)?;
+                    match action {
+                        TagsCommand::Add { .. } => entry.data.custom.tags.extend(tags.clone()),
+                        TagsCommand::Remove { .. } => {
+                            entry.data.custom.tags.retain(|t| !tags.contains(t))
+                        }
+                        _ => unreachable!(),
+                    }
+                    ops::write_entry(&root, k, &entry.data, true)?;
                 }
-                ops::write_entry(&root, key, &entry.data, true)?;
             }
         },
         Command::Import { path } => {
