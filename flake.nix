@@ -1,58 +1,63 @@
 {
   description = "A minimal reference manager";
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-    fenix = {
-      url = "github:nix-community/fenix";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     crane = {
       url = "github:ipetkov/crane";
-      inputs = {
-        flake-utils.follows = "flake-utils";
-        nixpkgs.follows = "nixpkgs";
-      };
+      inputs.nixpkgs.follows = "nixpkgs";
     };
-    flake-utils.url = "github:numtide/flake-utils";
   };
-
-  outputs =
-    { self
-    , nixpkgs
-    , crane
-    , fenix
-    , flake-utils
-    , ...
-    }:
-    flake-utils.lib.eachDefaultSystem (
-      system:
-      let
-        pkgs = import nixpkgs { inherit system; };
-        inherit (pkgs) lib stdenv;
-        fenixPkgs = fenix.packages.${system};
-        rustToolchain = fenixPkgs.stable.toolchain;
-        craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
+  outputs = {
+    nixpkgs,
+    rust-overlay,
+    crane,
+    ...
+  }: let
+    inherit (nixpkgs) lib;
+    withSystem = f:
+      lib.fold lib.recursiveUpdate {}
+      (map f ["x86_64-linux" "x86_64-darwin" "aarch64-linux" "aarch64-darwin"]);
+  in
+    withSystem (
+      system: let
+        pkgs = import nixpkgs {
+          inherit system;
+          overlays = [rust-overlay.overlays.default];
+        };
+        inherit (pkgs) stdenv lib;
+        toolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
+        craneLib = (crane.mkLib pkgs).overrideToolchain toolchain;
         buildDeps = lib.optionals stdenv.isDarwin (with pkgs.darwin.apple_sdk.frameworks; [
-          Security
-          pkgs.libiconv
-        ]);
+            Security
+            pkgs.libiconv
+          ]);
         crate = craneLib.buildPackage {
-          src = craneLib.cleanCargoSource ./.;
+          src = craneLib.cleanCargoSource (craneLib.path ./.);
+          strictDeps = true;
           buildInputs = buildDeps;
         };
-      in
-      {
-        checks = {
-          inherit crate;
+      in {
+        apps.${system}.default = let
+          name = crate.pname or crate.name;
+          exe = crate.passthru.exePath or "/bin/${name}";
+        in {
+          type = "app";
+          program = crate.passthru.exePath or "/bin/${name}";
         };
-        packages.default = crate;
-        apps.default = flake-utils.lib.mkApp {
-          drv = crate;
-        };
-        devShell = pkgs.mkShell {
-          inputsFrom = builtins.attrValues self.checks;
-          buildInputs = [ fenixPkgs.rust-analyzer buildDeps ];
-          nativeBuildInputs = [ rustToolchain ];
+        packages.${system}.default = crate;
+        checks.${system} = {inherit crate;};
+        devShells.${system}.default = pkgs.mkShell {
+          packages =
+            [
+              toolchain
+              pkgs.rust-analyzer-unwrapped
+            ]
+            ++ buildDeps;
+          RUST_SRC_PATH = "${toolchain}/lib/rustlib/src/rust/library";
         };
       }
     );
