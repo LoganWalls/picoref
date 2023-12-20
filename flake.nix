@@ -32,9 +32,9 @@
         toolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
         craneLib = (crane.mkLib pkgs).overrideToolchain toolchain;
         buildDeps = lib.optionals stdenv.isDarwin (with pkgs.darwin.apple_sdk.frameworks; [
-            Security
-            pkgs.libiconv
-          ]);
+          Security
+          pkgs.libiconv
+        ]);
         crate = craneLib.buildPackage {
           src = craneLib.cleanCargoSource (craneLib.path ./.);
           strictDeps = true;
@@ -46,7 +46,7 @@
           exe = crate.passthru.exePath or "/bin/${name}";
         in {
           type = "app";
-          program = crate.passthru.exePath or "/bin/${name}";
+          program = "${crate}${exe}";
         };
         packages.${system}.default = crate;
         checks.${system} = {inherit crate;};
