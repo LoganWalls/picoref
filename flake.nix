@@ -55,6 +55,7 @@
             [
               toolchain
               pkgs.rust-analyzer-unwrapped
+              pkgs.glow
             ]
             ++ buildDeps;
           RUST_SRC_PATH = "${toolchain}/lib/rustlib/src/rust/library";
