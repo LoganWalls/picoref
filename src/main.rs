@@ -23,7 +23,7 @@ struct CliArgs {
     #[command(subcommand)]
     pub command: Command,
 
-    /// Path to the configuration file that should be used
+    /// Path to the configuration file that should be used (defaults to "$XDG_CONFIG_HOME/picoref/config.toml")
     #[arg(short, long, value_name = "FILE", value_hint = ValueHint::FilePath)]
     pub config: Option<PathBuf>,
 
@@ -35,6 +35,7 @@ struct CliArgs {
 #[derive(Subcommand, Debug)]
 enum TagsCommand {
     /// List all of the tags the currently exist in your library
+    #[clap(alias = "ls")]
     List,
 
     /// Add a tag to an entry
@@ -78,6 +79,7 @@ enum Command {
     Root,
 
     /// List the entries in your library
+    #[clap(alias = "ls")]
     List {
         /// List entries with a specific tag
         #[arg(long, num_args(1..), conflicts_with = "all_tags")]
@@ -107,6 +109,7 @@ enum Command {
     },
 
     /// Generate a markdown file with the entry's metadata
+    #[clap(alias = "md")]
     Markdown {
         /// The citekey of the reference to render
         key: String,
