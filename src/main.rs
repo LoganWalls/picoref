@@ -103,7 +103,7 @@ enum Command {
     Pdf {
         /// The citekey of the reference to fetch
         key: String,
-        /// Copy an exisitng file into your library instead of fetching a PDF from the internet
+        /// Copy an existing file into your library instead of fetching a PDF from the internet
         #[arg(short, long, value_name = "FILE", value_hint = ValueHint::FilePath)]
         file: Option<PathBuf>,
     },
