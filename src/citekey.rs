@@ -16,7 +16,7 @@ static RE: Lazy<Regex> =
 static WHITESPACE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s+").unwrap());
 static UNSUPPORTED_CHAR_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(<.*?>)|[^\w\-\s]").unwrap());
 
-/// Generates a citekey based on the metadata contained in `reference`
+/// Generates a citekey based on the metadata contained in `data`
 pub fn get_key(data: &EntryData) -> Result<String> {
     let name = data
         .standard_fields
@@ -47,17 +47,22 @@ pub fn get_key(data: &EntryData) -> Result<String> {
         })
         .as_ref()
         .map(|s| UNSUPPORTED_CHAR_RE.replace_all(s, " "))
-        .map(|s| WHITESPACE_RE.replace_all(&s, " ").trim().replace(' ', "-"));
-    let year = data.standard_fields.get("issued").and_then(|issued| {
-        Some(
-            issued
-                .get("date-parts")?
-                .get(0)?
-                .get(0)?
-                .as_u64()?
-                .to_string(),
-        )
-    });
+        .map(|s| WHITESPACE_RE.replace_all(&s, " ").trim().replace(' ', "-"))
+        .unwrap_or("unkown".to_string());
+    let year = data
+        .standard_fields
+        .get("issued")
+        .and_then(|issued| {
+            Some(
+                issued
+                    .get("date-parts")?
+                    .get(0)?
+                    .get(0)?
+                    .as_u64()?
+                    .to_string(),
+            )
+        })
+        .unwrap_or("xxxx".to_string());
 
     // Filters out stopwords, then takes all of the remaining complete words
     // separated by underscores, up to a total length of 15 characters.
@@ -81,11 +86,8 @@ pub fn get_key(data: &EntryData) -> Result<String> {
                 })
                 .as_ref()
                 .map(|s| s.split('-').take(2).collect::<Vec<_>>().join("-"))
-        });
+        })
+        .unwrap_or("no-title".to_string());
 
-    Ok([name, year, short_title]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<String>>()
-        .join("_"))
+    Ok([name, year, short_title].join("_"))
 }
