@@ -1,21 +1,27 @@
 mod citekey;
 mod config;
-mod entry;
+mod date;
 mod fetch;
 mod ops;
 mod regex;
+mod source;
+mod tags;
 use std::fs::File;
-use std::io::{BufReader, BufWriter, Write};
+use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use biblatex::{Bibliography, ChunksExt, Entry};
 use clap::{command, Parser, Subcommand, ValueHint};
 use indicatif::ProgressBar;
 use itertools::Itertools;
 
-use self::entry::EntryData;
+use crate::tags::set_tags;
+
+use self::date::get_year;
 use self::ops::read_entry;
+use self::tags::get_tags;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -155,10 +161,8 @@ fn main() -> Result<()> {
                         &root,
                         &p.file_name().unwrap().to_string_lossy(),
                     ))
-                    .unwrap()
-                    .data
-                    .custom
-                    .tags;
+                    .map(|entry| get_tags(&entry))
+                    .unwrap();
                     match (&any_tag, &all_tags) {
                         (Some(tags), None) => tags.iter().any(|t| entry_tags.contains(t)),
                         (None, Some(tags)) => tags.iter().all(|t| entry_tags.contains(t)),
@@ -172,26 +176,25 @@ fn main() -> Result<()> {
         }
         Command::Add { doi, tags } => {
             let mut entry = fetch::fetch_metadata(&doi)?;
-            let key = citekey::get_key(&entry.data)?;
-            ops::update_metadata(&mut entry.data, &key)?;
+            let key = citekey::get_key(&entry)?;
+            ops::update_metadata(&mut entry, &key)?;
             if let Some(t) = tags {
-                entry.data.custom.tags.extend(t);
+                set_tags(&mut entry, &t)
             }
-            ops::write_entry(&root, &key, &entry.data, false)?;
+            ops::write_entry(&root, &key, &entry, false)?;
             println!("{key}");
         }
         Command::Tags { action } => match &action {
             TagsCommand::List => ops::all_entry_paths(&root)?
                 .into_iter()
                 .flat_map(|p| {
-                    ops::read_entry(&ops::data_path(
-                        &root,
-                        &p.file_name().unwrap().to_string_lossy(),
-                    ))
-                    .unwrap()
-                    .data
-                    .custom
-                    .tags
+                    let entry =
+                        ops::read_entry(&ops::data_path(
+                            &root,
+                            &p.file_name().unwrap().to_string_lossy(),
+                        ))
+                        .unwrap();
+                    get_tags(&entry).clone()
                 })
                 .unique()
                 .sorted()
@@ -208,8 +211,10 @@ fn main() -> Result<()> {
                 };
                 for key in keys.iter() {
                     let mut entry = ops::read_entry(&ops::data_path(&root, key))?;
-                    entry.data.custom.tags.extend(tags.clone());
-                    ops::write_entry(&root, key, &entry.data, true)?;
+                    let mut current_tags = get_tags(&entry);
+                    current_tags.extend(tags.clone());
+                    set_tags(&mut entry, &current_tags);
+                    ops::write_entry(&root, key, &entry, true)?;
                 }
             }
             TagsCommand::Remove {
@@ -226,22 +231,23 @@ fn main() -> Result<()> {
                 for key in keys.iter() {
                     let mut entry = ops::read_entry(&ops::data_path(&root, key))?;
                     if *all_tags {
-                        entry.data.custom.tags.clear();
+                        set_tags(&mut entry, &[] as &[&str])
                     } else {
-                        entry.data.custom.tags.retain(|t| !tags.contains(t));
+                        let mut entry_tags = get_tags(&entry);
+                        entry_tags.retain(|t1| !tags.iter().any(|t2| t1 == t2));
+                        set_tags(&mut entry, &entry_tags);
                     }
-                    ops::write_entry(&root, key, &entry.data, true)?;
+                    ops::write_entry(&root, key, &entry, true)?;
                 }
             }
         },
         Command::Import { path } => {
-            let file = File::open(path)?;
-            let reader = BufReader::new(file);
-            let mut entries: Vec<EntryData> = serde_json::from_reader(reader)?;
-            for data in entries.iter_mut() {
-                let key = citekey::get_key(data)?;
-                ops::update_metadata(data, &key)?;
-                ops::write_entry(&root, &key, data, false)?;
+            let src = std::fs::read_to_string(path)?;
+            let mut bib = Bibliography::parse(&src).expect("input not valid bibtex");
+            for entry in bib.iter_mut() {
+                let key = citekey::get_key(entry)?;
+                ops::update_metadata(entry, &key)?;
+                ops::write_entry(&root, &key, entry, false)?;
             }
         }
         Command::Export { path, key } => {
@@ -260,15 +266,16 @@ fn main() -> Result<()> {
                             .to_str()
                             .context("Path contains unicode")?,
                     ))
-                    .map(|e| e.data)
                 })
-                .collect::<Result<Vec<EntryData>>>()?;
+                .collect::<Result<Vec<Entry>>>()?;
             let file = File::create(path)?;
             let writer = BufWriter::new(file);
             serde_json::to_writer(writer, &content)?;
         }
         Command::Pdf { key, file } => {
-            let source = read_entry(&ops::data_path(&root, &key))?.source;
+            let source = read_entry(&ops::data_path(&root, &key))?
+                .doi()
+                .map(|doi| doi.into());
             let path = ops::pdf_path(&root, &key);
             if path.exists() {
                 panic!("A file already exists at: {}", path.to_string_lossy());
@@ -292,26 +299,23 @@ fn main() -> Result<()> {
             };
         }
         Command::Markdown { key } => {
-            let data = read_entry(&ops::data_path(&root, &key))?.data;
+            let data = read_entry(&ops::data_path(&root, &key))?;
             let stdout = std::io::stdout().lock();
             let mut writer = BufWriter::new(stdout);
 
-            if let Some(title) = data.standard_fields.get("title").and_then(|t| t.as_str()) {
+            if let Ok(title) = data.title().map(|chunks| chunks.to_biblatex_string(false)) {
                 writer.write_all("# ".as_bytes())?;
                 writer.write_all(title.as_bytes())?;
                 writer.write_all("\n".as_bytes())?;
             }
 
             let by_line = data
-                .standard_fields
-                .get("author")
+                .author()
+                .ok()
                 .and_then(|a| {
-                    a.as_array()?
-                        .iter()
+                    a.iter()
                         .map(|a| {
-                            let given = a.get("given")?.as_str()?;
-                            let family = a.get("family")?.as_str()?;
-                            Some(format!("{given} {family}"))
+                            Some(format!("{} {} {} {}", a.prefix, a.given_name, a.name, a.suffix))
                         })
                         .collect::<Option<Vec<String>>>()
                 })
@@ -323,44 +327,38 @@ fn main() -> Result<()> {
                     }
                     v.join(if v.len() > 2 { ", " } else { " " })
                 })
-                .or_else(|| Some(data.standard_fields.get("source")?.as_str()?.to_string()));
+                .or_else(|| {
+                    Some(
+                        data.get("source")
+                            .map(|chunks| chunks.to_biblatex_string(false))
+                            .unwrap_or_default(),
+                    )
+                });
             if let Some(by) = &by_line {
                 writer.write_all(by.as_bytes())?;
                 writer.write_all("\n".as_bytes())?;
             }
 
-            if let Some(container) = data
-                .standard_fields
-                .get("container-title")
-                .and_then(|c| c.as_str())
-            {
+            if let Ok(journal) = data.journal_title() {
                 writer.write_all("*".as_bytes())?;
-                writer.write_all(container.as_bytes())?;
+                writer.write_all(journal.to_biblatex_string(false).as_bytes())?;
                 writer.write_all("*".as_bytes())?;
             }
 
-            if let Some(year) = data
-                .standard_fields
-                .get("issued")
-                .and_then(|i| i.get("date-parts")?.get(0)?.get(0)?.as_u64())
-            {
+            if let Ok(date) = data.date() {
                 writer.write_all(" (".as_bytes())?;
-                writer.write_all(year.to_string().as_bytes())?;
+                writer.write_all(get_year(Some(date)).as_bytes())?;
                 writer.write_all(")".as_bytes())?;
             }
 
             writer.write_all("\n\n".as_bytes())?;
 
-            if let Some(entry_abstract) = data
-                .standard_fields
-                .get("abstract")
-                .and_then(|a| a.as_str())
-            {
-                writer.write_all(entry_abstract.as_bytes())?;
+            if let Ok(entry_abstract) = data.abstract_() {
+                writer.write_all(entry_abstract.to_biblatex_string(false).as_bytes())?;
                 writer.write_all("\n\n".as_bytes())?;
             }
 
-            let tags = data.custom.tags;
+            let tags = get_tags(&data);
             if !tags.is_empty() {
                 writer.write_all("Tags: ".as_bytes())?;
                 writer.write_all(tags.join(", ").as_bytes())?;

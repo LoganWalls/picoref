@@ -1,10 +1,9 @@
 use anyhow::Result;
+use biblatex::{Chunk, Entry, Spanned};
 
 use std::fs::{create_dir_all, File};
 use std::io::{BufReader, BufWriter};
 use std::path::{Path, PathBuf};
-
-use crate::entry::{Entry, EntryData};
 
 pub fn entry_root_path(root: &Path, key: &str) -> PathBuf {
     root.join(key)
@@ -49,7 +48,7 @@ pub fn read_entry(path: &Path) -> Result<Entry> {
     Ok(serde_yaml::from_reader(reader)?)
 }
 
-pub fn write_entry(root: &Path, key: &str, data: &EntryData, overwrite: bool) -> Result<()> {
+pub fn write_entry(root: &Path, key: &str, data: &Entry, overwrite: bool) -> Result<()> {
     let dir = entry_root_path(root, key);
     let path = data_path(root, key);
     if path.exists() && !overwrite {
@@ -66,17 +65,17 @@ pub fn write_entry(root: &Path, key: &str, data: &EntryData, overwrite: bool) ->
     Ok(())
 }
 
-pub fn update_metadata(data: &mut EntryData, key: &str) -> Result<()> {
-    let old_id = data.standard_fields.insert("id".to_string(), key.into());
+pub fn update_metadata(data: &mut Entry, key: &str) -> Result<()> {
+    let old_id = data.get("id");
     if let Some(i) = old_id {
-        data.standard_fields.insert("legacy-id".to_string(), i);
+        data.set("legacy-id", i.to_vec());
     }
-    let old_key = data
-        .standard_fields
-        .insert("citation-key".to_string(), key.into());
+    let old_key = data.get("citation-key");
     if let Some(k) = old_key {
-        data.standard_fields
-            .insert("legacy-citation-key".to_string(), k);
+        data.set("legacy-citation-key", k.to_vec());
     }
+    let key_chunks = vec![Spanned::detached(Chunk::Normal(key.to_string()))];
+    data.set("id", key_chunks.clone());
+    data.set("citation-key", key_chunks);
     Ok(())
 }

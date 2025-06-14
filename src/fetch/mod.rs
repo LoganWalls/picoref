@@ -4,8 +4,9 @@ pub mod osf;
 pub mod unpaywall;
 
 use anyhow::{Context, Result};
+use biblatex::{Bibliography, Entry};
 
-use crate::entry::{Entry, EntryData, Source};
+use crate::source::Source;
 
 /// Checks if there is a published version of this paper (e.g. if the provided DOI is a pre-print)
 /// and returns the DOI of the published version, if available.
@@ -19,20 +20,20 @@ pub fn published_doi(source: &Source) -> Result<Option<String>> {
 }
 
 pub fn fetch_metadata(doi: &str) -> Result<Entry> {
-    let source = doi.into();
-    let url = if let Some(published) = published_doi(&source)? {
-        format!("https://dx.doi.org/{published}")
-    } else {
-        format!("https://dx.doi.org/{doi}")
-    };
-    let data: EntryData = ureq::get(&url)
-        .set("Accept", "application/citeproc+json; charset=utf-8")
+    let source: Source = doi.into();
+    let url = format!(
+        "https://dx.doi.org/{}",
+        published_doi(&source)?.unwrap_or(doi.to_string())
+    );
+    let response = ureq::get(&url)
+        .set("Accept", "text/bibliography; charset=utf-8")
         .call()?
-        .into_json()?;
-    Ok(Entry {
-        source: Some(source),
-        data,
-    })
+        .into_string()?;
+    Ok(Bibliography::parse(&response)
+        .expect("response not valid bibtex")
+        .into_iter()
+        .next()
+        .expect("no bib entries in response"))
 }
 
 pub fn fetch_pdf_url(source: &Source, email: &str) -> Result<String> {
