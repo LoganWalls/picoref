@@ -1,6 +1,6 @@
 # PicoRef
 A simple and minimal CLI tool to manage your references.
-PicoRef is based on plain text: your library is just a folder, and each reference is a subfolder within that library. The metadata for each reference is stored in the [CSL JSON](https://citeproc-js.readthedocs.io/en/latest/csl-json/markup.html) format, but is encoded as `yaml` to facilitate manual edits. 
+PicoRef is based on plain text: your library is just a folder, and each reference is a subfolder within that library. The metadata for each reference is stored in the [CSL JSON](https://citeproc-js.readthedocs.io/en/latest/csl-json/markup.html) format, but is encoded as `toml` to facilitate manual edits. 
 
 PicoRef's scope of functionality is deliberately small. It focuses on just a few things:
 1. Managing the files that make up your library (e.g. creating directories when needed, placing PDFs in the same subdirectory as the reference metadata, tags for managing collections)

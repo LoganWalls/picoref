@@ -1,7 +1,6 @@
 use anyhow::Result;
 
-use std::fs::{create_dir_all, File};
-use std::io::{BufReader, BufWriter};
+use std::fs::create_dir_all;
 use std::path::{Path, PathBuf};
 
 use crate::entry::{Entry, EntryData};
@@ -11,7 +10,7 @@ pub fn entry_root_path(root: &Path, key: &str) -> PathBuf {
 }
 
 pub fn data_path(root: &Path, key: &str) -> PathBuf {
-    entry_root_path(root, key).join(format!("{key}.yaml"))
+    entry_root_path(root, key).join(format!("{key}.toml"))
 }
 
 pub fn pdf_path(root: &Path, key: &str) -> PathBuf {
@@ -44,9 +43,8 @@ pub fn all_keys(root: &Path) -> Result<Vec<String>> {
 }
 
 pub fn read_entry(path: &Path) -> Result<Entry> {
-    let file = File::open(path)?;
-    let reader = BufReader::new(file);
-    Ok(serde_yaml::from_reader(reader)?)
+    let content = std::fs::read_to_string(path)?;
+    Ok(toml::from_str(&content)?)
 }
 
 pub fn write_entry(root: &Path, key: &str, data: &EntryData, overwrite: bool) -> Result<()> {
@@ -60,9 +58,8 @@ pub fn write_entry(root: &Path, key: &str, data: &EntryData, overwrite: bool) ->
         return Ok(());
     }
     create_dir_all(dir)?;
-    let file = File::create(path)?;
-    let writer = BufWriter::new(file);
-    serde_yaml::to_writer(writer, &data)?;
+    let content = toml::to_string_pretty(&data)?;
+    std::fs::write(path, content)?;
     Ok(())
 }
 
