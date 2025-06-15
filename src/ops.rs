@@ -67,16 +67,13 @@ pub fn write_entry(root: &Path, key: &str, data: &EntryData, overwrite: bool) ->
 }
 
 pub fn update_metadata(data: &mut EntryData, key: &str) -> Result<()> {
-    let old_id = data.standard_fields.insert("id".to_string(), key.into());
+    let old_id = data.fields.insert("id".to_string(), key.into());
     if let Some(i) = old_id {
-        data.standard_fields.insert("legacy-id".to_string(), i);
+        data.fields.insert("legacy-id".to_string(), i);
     }
-    let old_key = data
-        .standard_fields
-        .insert("citation-key".to_string(), key.into());
+    let old_key = data.fields.insert("citation-key".to_string(), key.into());
     if let Some(k) = old_key {
-        data.standard_fields
-            .insert("legacy-citation-key".to_string(), k);
+        data.fields.insert("legacy-citation-key".to_string(), k);
     }
     Ok(())
 }

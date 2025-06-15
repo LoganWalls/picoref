@@ -25,10 +25,11 @@ pub fn fetch_metadata(doi: &str) -> Result<Entry> {
     } else {
         format!("https://dx.doi.org/{doi}")
     };
-    let data: EntryData = ureq::get(&url)
-        .set("Accept", "application/citeproc+json; charset=utf-8")
-        .call()?
-        .into_json()?;
+    let data: EntryData =
+        ureq::get(&url)
+            .set("Accept", "application/citeproc+json; charset=utf-8")
+            .call()?
+            .into_json()?;
     Ok(Entry {
         source: Some(source),
         data,

@@ -1,3 +1,4 @@
+mod bibtex;
 mod citekey;
 mod config;
 mod entry;
@@ -78,6 +79,12 @@ enum Command {
     /// Print the path to your library's root
     Root,
 
+    #[clap(alias = "bib")]
+    Bibtex {
+        /// The citekey of the reference to convert
+        key: String,
+    },
+
     /// List the entries in your library
     #[clap(alias = "ls")]
     List {
@@ -147,6 +154,10 @@ fn main() -> Result<()> {
 
     match cli_args.command {
         Command::Root => println!("{}", root.to_str().expect("path to be valid unicode")),
+        Command::Bibtex { key } => {
+            let entry = read_entry(&ops::data_path(&root, &key))?;
+            println!("{}", bibtex::to_bibtex([entry.data])?);
+        }
         Command::List { any_tag, all_tags } => {
             let mut paths = ops::all_entry_paths(&root)?;
             if any_tag.is_some() || all_tags.is_some() {
@@ -157,7 +168,6 @@ fn main() -> Result<()> {
                     ))
                     .unwrap()
                     .data
-                    .custom
                     .tags;
                     match (&any_tag, &all_tags) {
                         (Some(tags), None) => tags.iter().any(|t| entry_tags.contains(t)),
@@ -175,7 +185,7 @@ fn main() -> Result<()> {
             let key = citekey::get_key(&entry.data)?;
             ops::update_metadata(&mut entry.data, &key)?;
             if let Some(t) = tags {
-                entry.data.custom.tags.extend(t);
+                entry.data.tags.extend(t);
             }
             ops::write_entry(&root, &key, &entry.data, false)?;
             println!("{key}");
@@ -190,7 +200,6 @@ fn main() -> Result<()> {
                     ))
                     .unwrap()
                     .data
-                    .custom
                     .tags
                 })
                 .unique()
@@ -208,7 +217,7 @@ fn main() -> Result<()> {
                 };
                 for key in keys.iter() {
                     let mut entry = ops::read_entry(&ops::data_path(&root, key))?;
-                    entry.data.custom.tags.extend(tags.clone());
+                    entry.data.tags.extend(tags.clone());
                     ops::write_entry(&root, key, &entry.data, true)?;
                 }
             }
@@ -226,9 +235,9 @@ fn main() -> Result<()> {
                 for key in keys.iter() {
                     let mut entry = ops::read_entry(&ops::data_path(&root, key))?;
                     if *all_tags {
-                        entry.data.custom.tags.clear();
+                        entry.data.tags.clear();
                     } else {
-                        entry.data.custom.tags.retain(|t| !tags.contains(t));
+                        entry.data.tags.retain(|t| !tags.contains(t));
                     }
                     ops::write_entry(&root, key, &entry.data, true)?;
                 }
@@ -296,14 +305,14 @@ fn main() -> Result<()> {
             let stdout = std::io::stdout().lock();
             let mut writer = BufWriter::new(stdout);
 
-            if let Some(title) = data.standard_fields.get("title").and_then(|t| t.as_str()) {
+            if let Some(title) = data.fields.get("title").and_then(|t| t.as_str()) {
                 writer.write_all("# ".as_bytes())?;
                 writer.write_all(title.as_bytes())?;
                 writer.write_all("\n".as_bytes())?;
             }
 
             let by_line = data
-                .standard_fields
+                .fields
                 .get("author")
                 .and_then(|a| {
                     a.as_array()?
@@ -323,24 +332,20 @@ fn main() -> Result<()> {
                     }
                     v.join(if v.len() > 2 { ", " } else { " " })
                 })
-                .or_else(|| Some(data.standard_fields.get("source")?.as_str()?.to_string()));
+                .or_else(|| Some(data.fields.get("source")?.as_str()?.to_string()));
             if let Some(by) = &by_line {
                 writer.write_all(by.as_bytes())?;
                 writer.write_all("\n".as_bytes())?;
             }
 
-            if let Some(container) = data
-                .standard_fields
-                .get("container-title")
-                .and_then(|c| c.as_str())
-            {
+            if let Some(container) = data.fields.get("container-title").and_then(|c| c.as_str()) {
                 writer.write_all("*".as_bytes())?;
                 writer.write_all(container.as_bytes())?;
                 writer.write_all("*".as_bytes())?;
             }
 
             if let Some(year) = data
-                .standard_fields
+                .fields
                 .get("issued")
                 .and_then(|i| i.get("date-parts")?.get(0)?.get(0)?.as_u64())
             {
@@ -351,16 +356,12 @@ fn main() -> Result<()> {
 
             writer.write_all("\n\n".as_bytes())?;
 
-            if let Some(entry_abstract) = data
-                .standard_fields
-                .get("abstract")
-                .and_then(|a| a.as_str())
-            {
+            if let Some(entry_abstract) = data.fields.get("abstract").and_then(|a| a.as_str()) {
                 writer.write_all(entry_abstract.as_bytes())?;
                 writer.write_all("\n\n".as_bytes())?;
             }
 
-            let tags = data.custom.tags;
+            let tags = data.tags;
             if !tags.is_empty() {
                 writer.write_all("Tags: ".as_bytes())?;
                 writer.write_all(tags.join(", ").as_bytes())?;

@@ -8,7 +8,6 @@
     };
     crane = {
       url = "github:ipetkov/crane";
-      inputs.nixpkgs.follows = "nixpkgs";
     };
   };
   outputs = {
@@ -31,14 +30,32 @@
         inherit (pkgs) stdenv lib;
         toolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
         craneLib = (crane.mkLib pkgs).overrideToolchain toolchain;
-        buildDeps = lib.optionals stdenv.isDarwin (with pkgs.darwin.apple_sdk.frameworks; [
-          Security
-          pkgs.libiconv
-        ]);
+        jsPackage = pkgs.buildNpmPackage {
+          pname = "bibtex-converter";
+          version = "0.1.0";
+          src = ./js;
+          npmDepsHash = "sha256-PMsVA12HldZfMptP0fQe9GR+ZT2Wf30Kku/VHoCsbx4=";
+          installPhase = ''
+            cp -r dist/ $out/
+          '';
+        };
+        buildDeps = with pkgs; (
+          [
+            esbuild
+          ]
+          ++ lib.optionals stdenv.isDarwin [
+            libiconv
+          ]
+        );
         crate = craneLib.buildPackage {
-          src = craneLib.cleanCargoSource (craneLib.path ./.);
+          src = craneLib.cleanCargoSource ./.;
           strictDeps = true;
-          buildInputs = buildDeps;
+          nativeBuildInputs = buildDeps;
+          preBuild = ''
+            mkdir -p js
+            rm -rf js/dist
+            ln -s ${jsPackage} js/dist
+          '';
         };
       in {
         apps.${system}.default = let
@@ -51,11 +68,12 @@
         packages.${system}.default = crate;
         checks.${system} = {inherit crate;};
         devShells.${system}.default = pkgs.mkShell {
-          packages =
+          packages = with pkgs;
             [
               toolchain
-              pkgs.rust-analyzer-unwrapped
-              pkgs.glow
+              rust-analyzer-unwrapped
+              glow
+              nodePackages.npm
             ]
             ++ buildDeps;
           RUST_SRC_PATH = "${toolchain}/lib/rustlib/src/rust/library";

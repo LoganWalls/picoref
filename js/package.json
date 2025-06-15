@@ -1,0 +1,17 @@
+{
+  "name": "bibtex-converter",
+  "version": "0.1.0",
+  "main": "src/bibtex-converter.js",
+  "scripts": {
+    "build": "./build.js"
+  },
+  "author": "",
+  "license": "MIT",
+  "description": "",
+  "dependencies": {
+    "biblatex-csl-converter": "^3.2.2"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.5"
+  }
+}

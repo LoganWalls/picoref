@@ -35,18 +35,11 @@ impl From<&str> for Source {
 }
 
 #[derive(Serialize, Deserialize, Default, Debug)]
-pub struct CustomFields {
+pub struct EntryData {
+    #[serde(default, rename = "picoref_tags")]
     pub tags: Vec<String>,
     #[serde(flatten)]
-    pub other: Map<String, serde_json::Value>,
-}
-
-#[derive(Serialize, Deserialize, Default, Debug)]
-pub struct EntryData {
-    #[serde(default)]
-    pub custom: CustomFields,
-    #[serde(flatten)]
-    pub standard_fields: Map<String, serde_json::Value>,
+    pub fields: Map<String, serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -60,7 +53,7 @@ impl TryFrom<EntryData> for Entry {
     type Error = anyhow::Error;
     fn try_from(data: EntryData) -> Result<Self> {
         let source = data
-            .standard_fields
+            .fields
             .get("DOI")
             .and_then(|doi| doi.as_str())
             .map(|s| s.into());
