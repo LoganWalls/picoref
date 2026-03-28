@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use clap::{command, Parser, Subcommand, ValueHint};
+use clap::{Parser, Subcommand, ValueHint};
 use indicatif::ProgressBar;
 use itertools::Itertools;
 
