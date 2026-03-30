@@ -79,12 +79,6 @@ enum Command {
     /// Print the path to your library's root
     Root,
 
-    #[clap(alias = "bib")]
-    Bibtex {
-        /// The citekey of the reference to convert
-        key: String,
-    },
-
     /// List the entries in your library
     #[clap(alias = "ls")]
     List {
@@ -122,15 +116,27 @@ enum Command {
         key: String,
     },
 
-    /// Import all entries from a file
+    /// Import all entries from a json file
     Import {
         /// The file to import from
         #[arg(value_name = "FILE", value_hint = ValueHint::FilePath)]
         path: PathBuf,
     },
 
-    /// Export from your library
-    Export {
+    /// Export entries as bibtex
+    #[clap(alias = "bib")]
+    ToBibtex {
+        /// The path to export to
+        #[arg(value_name = "FILE", value_hint = ValueHint::FilePath)]
+        path: PathBuf,
+
+        /// The citekey of the reference to export (if not provided, all entries are exported)
+        #[arg(short, long)]
+        key: Option<String>,
+    },
+
+    /// Export entries as json
+    ToJson {
         /// The path to export to
         #[arg(value_name = "FILE", value_hint = ValueHint::FilePath)]
         path: PathBuf,
@@ -154,9 +160,27 @@ fn main() -> Result<()> {
 
     match cli_args.command {
         Command::Root => println!("{}", root.to_str().expect("path to be valid unicode")),
-        Command::Bibtex { key } => {
-            let entry = read_entry(&ops::data_path(&root, &key))?;
-            println!("{}", bibtex::to_bibtex([entry.data])?);
+        Command::ToBibtex { path, key } => {
+            let paths = if let Some(k) = key {
+                vec![ops::entry_root_path(&root, &k)]
+            } else {
+                ops::all_entry_paths(&root)?
+            };
+            let content = paths
+                .into_iter()
+                .map(|p| {
+                    read_entry(&ops::data_path(
+                        &root,
+                        p.file_name()
+                            .context("Not a valid file name")?
+                            .to_str()
+                            .context("Path contains unicode")?,
+                    ))
+                    .map(|e| e.data)
+                })
+                .collect::<Result<Vec<EntryData>>>()?;
+            let mut file = File::create(path)?;
+            file.write_all(bibtex::to_bibtex(content)?.as_bytes())?;
         }
         Command::List { any_tag, all_tags } => {
             let mut paths = ops::all_entry_paths(&root)?;
@@ -253,7 +277,7 @@ fn main() -> Result<()> {
                 ops::write_entry(&root, &key, data, false)?;
             }
         }
-        Command::Export { path, key } => {
+        Command::ToJson { path, key } => {
             let paths = if let Some(k) = key {
                 vec![ops::entry_root_path(&root, &k)]
             } else {
