@@ -4,12 +4,19 @@ use std::path::PathBuf;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Serialize, Deserialize, Default, Debug)]
 pub struct Config {
     /// Path to library
     pub root: PathBuf,
     /// Email (for API self-identification)
     pub email: String,
+    /// Automatically fetch PDF when adding a new entry
+    #[serde(default = "default_true")]
+    pub fetch_pdf_on_add: bool,
 }
 
 pub fn load(path: Option<PathBuf>) -> Result<Config> {

@@ -4,15 +4,14 @@ mod config;
 mod entry;
 mod fetch;
 mod ops;
+mod pdf;
 mod regex;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
 use std::path::PathBuf;
-use std::time::Duration;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueHint};
-use indicatif::ProgressBar;
 use itertools::Itertools;
 
 use self::entry::EntryData;
@@ -213,6 +212,16 @@ fn main() -> Result<()> {
             }
             ops::write_entry(&root, &key, &entry.data, false)?;
             println!("{key}");
+            if conf.fetch_pdf_on_add {
+                if let Some(ref source) = entry.source {
+                    let pdf_path = ops::pdf_path(&root, &key);
+                    if !pdf_path.exists() {
+                        if let Err(e) = pdf::download_pdf(source, &conf.email, &pdf_path) {
+                            eprintln!("Could not automatically fetch PDF: {e}");
+                        }
+                    }
+                }
+            }
         }
         Command::Tags { action } => match &action {
             TagsCommand::List => ops::all_entry_paths(&root)?
@@ -309,29 +318,11 @@ fn main() -> Result<()> {
             if let Some(source_path) = file {
                 std::fs::copy(source_path, path)?;
             } else {
-                let mut pb = ProgressBar::new_spinner().with_message("Searching for PDF");
-                pb.enable_steady_tick(Duration::from_millis(100));
-                let pdf_url = fetch::fetch_pdf_url(
+                pdf::download_pdf(
                     &source.expect("Cannot fetch PDF for reference with no DOI"),
                     &conf.email,
+                    &path,
                 )?;
-                pb.finish_with_message("PDF found");
-                let pdf_response = ureq::get(&pdf_url).call()?;
-                let content_type = pdf_response.content_type().to_owned();
-                if content_type != "application/pdf" {
-                    eprintln!("Found a URL but it is not a direct PDF link:");
-                    eprintln!("  {pdf_url}");
-                    eprintln!();
-                    eprintln!("Download the PDF manually, then run:");
-                    eprintln!("  picoref pdf {key} --file <path-to-pdf>");
-                    anyhow::bail!("Could not automatically download PDF");
-                }
-                let mut pdf_data = pdf_response.into_reader();
-                pb = ProgressBar::new_spinner().with_message("Downloading");
-                pb.enable_steady_tick(Duration::from_millis(100));
-                let mut new_file = File::create(path)?;
-                std::io::copy(&mut pdf_data, &mut new_file)?;
-                pb.finish_with_message("Download complete");
             };
         }
         Command::Markdown { key } => {
