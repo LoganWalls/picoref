@@ -216,7 +216,10 @@ fn main() -> Result<()> {
                 if let Some(ref source) = entry.source {
                     let pdf_path = ops::pdf_path(&root, &key);
                     if !pdf_path.exists() {
-                        if let Err(e) = pdf::download_pdf(source, &conf.email, &pdf_path) {
+                        let title = entry.data.fields.get("title").and_then(|t| t.as_str());
+                        if let Err(e) =
+                            pdf::download_pdf(source, &conf.email, title, &key, &pdf_path)
+                        {
                             eprintln!("Could not automatically fetch PDF: {e}");
                         }
                     }
@@ -310,7 +313,7 @@ fn main() -> Result<()> {
             serde_json::to_writer(writer, &content)?;
         }
         Command::Pdf { key, file } => {
-            let source = read_entry(&ops::data_path(&root, &key))?.source;
+            let entry = read_entry(&ops::data_path(&root, &key))?;
             let path = ops::pdf_path(&root, &key);
             if path.exists() {
                 panic!("A file already exists at: {}", path.to_string_lossy());
@@ -318,9 +321,12 @@ fn main() -> Result<()> {
             if let Some(source_path) = file {
                 std::fs::copy(source_path, path)?;
             } else {
+                let title = entry.data.fields.get("title").and_then(|t| t.as_str());
                 pdf::download_pdf(
-                    &source.expect("Cannot fetch PDF for reference with no DOI"),
+                    &entry.source.expect("Cannot fetch PDF for reference with no DOI"),
                     &conf.email,
+                    title,
+                    &key,
                     &path,
                 )?;
             };

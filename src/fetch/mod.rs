@@ -39,20 +39,20 @@ pub fn fetch_metadata(doi: &str) -> Result<Entry> {
     })
 }
 
-pub fn fetch_pdf_url(source: &Source, email: &str) -> Result<String> {
+pub fn fetch_pdf_url(source: &Source, email: &str, title: Option<&str>) -> Result<String> {
     match source {
         Source::Arxiv(id) => Ok(arxiv::pdf_url(id)),
         Source::Biorxiv(id) => Ok(biorxiv::pdf_url(id)),
         Source::Osf(id) => osf::pdf_url(id),
-        Source::Other(doi) => fetch_oa_pdf_url(doi, email),
+        Source::Other(doi) => fetch_oa_pdf_url(doi, email, title),
     }
 }
 
-fn fetch_oa_pdf_url(doi: &str, email: &str) -> Result<String> {
+fn fetch_oa_pdf_url(doi: &str, email: &str, title: Option<&str>) -> Result<String> {
     if let Some(url) = try_source(|| unpaywall::pdf_url(doi, email)) {
         return Ok(url);
     }
-    if let Some(url) = try_source(|| semantic_scholar::pdf_url(doi)) {
+    if let Some(url) = try_source(|| semantic_scholar::pdf_url(doi, title)) {
         return Ok(url);
     }
     if let Some(url) = try_source(|| openalex::pdf_url(doi, email)) {
