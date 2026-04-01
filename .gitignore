@@ -2,6 +2,3 @@
 .envrc
 /target
 /result
-js/node_modules/
-js/dist/
-
